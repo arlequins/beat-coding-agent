@@ -1,16 +1,29 @@
+import { type DefaultTreeAdapterTypes, parse } from "parse5";
+
 import type { DocumentExtractionPort } from "./ports";
 
 const MAX_EXTRACTED_CHARACTERS = 1_000_000;
 
 function htmlToText(value: string) {
-  return value
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text: string[] = [];
+  const visit = (node: DefaultTreeAdapterTypes.Node) => {
+    if (node.nodeName === "#text" && "value" in node) {
+      text.push(node.value, " ");
+      return;
+    }
+    if (
+      "tagName" in node &&
+      (node.tagName === "script" || node.tagName === "style")
+    ) {
+      return;
+    }
+    if ("childNodes" in node) {
+      for (const child of node.childNodes) visit(child);
+    }
+  };
+
+  visit(parse(value));
+  return text.join("").replace(/\s+/g, " ").trim();
 }
 
 /** Safe local extractor for textual formats; binary formats must be supplied by a host parser adapter. */
