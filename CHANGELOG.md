@@ -2,6 +2,13 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1](https://github.com/arlequins/beat-coding-agent/compare/v0.2.0...v0.2.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ci:** enable manual code scanning validation ([f149599](https://github.com/arlequins/beat-coding-agent/commit/f1495993d7abc0ceafac1c312f6fa2da1faecdda))
+
 ## [0.2.0](https://github.com/arlequins/beat-coding-agent/compare/v0.1.0...v0.2.0) (2026-08-14)
 
 
