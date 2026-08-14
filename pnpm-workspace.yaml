@@ -77,4 +77,5 @@ onlyBuiltDependencies:
 
 overrides:
   '@types/minimatch': 6.0.0
+  'esbuild@0.18.20': 0.25.0
   lightningcss: 1.32.0
