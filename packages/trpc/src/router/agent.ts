@@ -14,6 +14,7 @@ import {
   documentScopeInputSchema,
   githubFileInputSchema,
   githubRepositoryInputSchema,
+  importCodexConversationInputSchema,
   ingestTextDocumentInputSchema,
   jobScopeInputSchema,
   knowledgeArtifactScopeInputSchema,
@@ -148,6 +149,19 @@ export const agentRouter = {
       ctx.services.agent.createConversation(
         actor(ctx.session.user.id, input.workspaceId),
         input.title,
+      ),
+    ),
+  importCodexConversation: protectedProcedure
+    .input(importCodexConversationInputSchema)
+    .mutation(({ ctx, input }) =>
+      ctx.services.agent.importCodexConversation(
+        actor(ctx.session.user.id, input.workspaceId),
+        {
+          batchId: input.batchId,
+          conversation: input.conversation,
+          sequence: input.sequence,
+          total: input.total,
+        },
       ),
     ),
   addMessage: protectedProcedure

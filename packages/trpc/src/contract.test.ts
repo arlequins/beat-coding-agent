@@ -46,6 +46,7 @@ describe("public tRPC contract", () => {
       "githubFile",
       "githubRepository",
       "githubSources",
+      "importCodexConversation",
       "indexRuns",
       "ingestTextDocument",
       "jobs",

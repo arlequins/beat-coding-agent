@@ -37,6 +37,26 @@ export const workspaceScopeInputSchema = z.object({ workspaceId: z.uuid() });
 export const createConversationInputSchema = workspaceScopeInputSchema.extend({
   title: z.string().trim().min(1).max(256).optional(),
 });
+const codexTurnInputSchema = z.object({
+  content: z.string().trim().min(1).max(100_000),
+  createdAt: z.iso.datetime(),
+  id: z.string().trim().min(1).max(512),
+  role: z.enum(["user", "assistant"]),
+});
+export const importCodexConversationInputSchema =
+  workspaceScopeInputSchema.extend({
+    batchId: z.string().trim().min(1).max(128),
+    conversation: z.object({
+      createdAt: z.iso.datetime(),
+      id: z.string().trim().min(1).max(512),
+      sourceFile: z.string().trim().min(1).max(2_048),
+      title: z.string().trim().min(1).max(256),
+      turns: z.array(codexTurnInputSchema).min(1).max(20_000),
+      updatedAt: z.iso.datetime(),
+    }),
+    sequence: z.number().int().nonnegative(),
+    total: z.number().int().positive(),
+  });
 export const addMessageInputSchema = workspaceScopeInputSchema.extend({
   conversationId: z.uuid(),
   content: z.string().trim().min(1).max(100_000),
