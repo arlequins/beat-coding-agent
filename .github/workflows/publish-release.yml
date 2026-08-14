@@ -1,6 +1,7 @@
 name: Publish tagged release
 
 on:
+  workflow_dispatch:
   push:
     tags: ["v*"]
 
