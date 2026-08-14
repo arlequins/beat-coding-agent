@@ -110,9 +110,31 @@ export function AgentChat() {
     ...trpc.agent.usage.queryOptions({ workspaceId: workspaceId ?? "" }),
     enabled: Boolean(workspaceId),
   });
+  const activeJob = useQuery({
+    ...trpc.agent.activeJob.queryOptions(),
+    enabled: Boolean(user),
+    refetchInterval: (query) => (query.state.data ? 5_000 : false),
+  });
   const isOwner =
     workspaces.data?.find((workspace) => workspace.id === workspaceId)?.role ===
     "owner";
+  const knowledgeArtifacts = useQuery({
+    ...trpc.agent.knowledgeArtifacts.queryOptions({
+      workspaceId: workspaceId ?? "",
+    }),
+    enabled: Boolean(workspaceId),
+  });
+  const jobs = useQuery({
+    ...trpc.agent.jobs.queryOptions({ workspaceId: workspaceId ?? "" }),
+    enabled: Boolean(workspaceId),
+    refetchInterval: 5_000,
+  });
+  const trainingDatasets = useQuery({
+    ...trpc.agent.trainingDatasets.queryOptions({
+      workspaceId: workspaceId ?? "",
+    }),
+    enabled: Boolean(workspaceId && isOwner),
+  });
   const auditLog = useQuery({
     ...trpc.agent.auditLog.queryOptions({ workspaceId: workspaceId ?? "" }),
     enabled: Boolean(workspaceId && isOwner),
@@ -223,6 +245,39 @@ export function AgentChat() {
   );
   const submitFeedback = useMutation(
     trpc.agent.submitFeedback.mutationOptions(),
+  );
+  const queueConsolidation = useMutation(
+    trpc.agent.queueConsolidation.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: trpc.agent.jobs.queryKey({
+            workspaceId: workspaceId ?? "",
+          }),
+        });
+      },
+    }),
+  );
+  const reviewKnowledgeArtifact = useMutation(
+    trpc.agent.reviewKnowledgeArtifact.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: trpc.agent.knowledgeArtifacts.queryKey({
+            workspaceId: workspaceId ?? "",
+          }),
+        });
+      },
+    }),
+  );
+  const createTrainingDataset = useMutation(
+    trpc.agent.createTrainingDataset.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: trpc.agent.trainingDatasets.queryKey({
+            workspaceId: workspaceId ?? "",
+          }),
+        });
+      },
+    }),
   );
   function submitWorkspace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -524,6 +579,104 @@ export function AgentChat() {
               );
             })}
           </div>
+        </details>
+        <details className="mt-5 border-t pt-4" open>
+          <summary className="cursor-pointer text-sm font-medium">
+            지식 정리
+          </summary>
+          <p className="text-muted-foreground mt-2 text-xs">
+            대화 원문은 보존하고, 정리 결과는 초안으로 만든 뒤 승인된 문서만
+            장기 문맥에 사용합니다.
+          </p>
+          <Button
+            className="mt-3 w-full"
+            disabled={!conversationId || queueConsolidation.isPending}
+            onClick={() =>
+              conversationId &&
+              workspaceId &&
+              queueConsolidation.mutate({ conversationId, workspaceId })
+            }
+            variant="outline"
+          >
+            {queueConsolidation.isPending
+              ? "정리 요청 중…"
+              : "현재 대화를 문서 초안으로 정리"}
+          </Button>
+          {activeJob.data && (
+            <p className="text-muted-foreground mt-2 text-xs">
+              현재 응답 처리 중 · 예상 완료{" "}
+              {activeJob.data.estimatedCompletionAt.toLocaleTimeString()}
+            </p>
+          )}
+          {jobs.data?.slice(0, 3).map((job) => (
+            <p className="text-muted-foreground mt-2 text-xs" key={job.id}>
+              {job.kind} · {job.status}
+              {job.estimatedCompletionAt
+                ? ` · ${job.estimatedCompletionAt.toLocaleTimeString()}`
+                : ""}
+            </p>
+          ))}
+          {knowledgeArtifacts.data?.slice(0, 5).map((artifact) => (
+            <div
+              className="mt-3 rounded-md border p-2 text-xs"
+              key={artifact.id}
+            >
+              <p className="font-medium">{artifact.title}</p>
+              <p className="text-muted-foreground mt-1">
+                {artifact.kind} · {artifact.status} · v{artifact.version}
+              </p>
+              {isOwner && artifact.status === "draft" && workspaceId && (
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="text-muted-foreground hover:underline"
+                    disabled={reviewKnowledgeArtifact.isPending}
+                    onClick={() =>
+                      reviewKnowledgeArtifact.mutate({
+                        artifactId: artifact.id,
+                        status: "canonical",
+                        workspaceId,
+                      })
+                    }
+                    type="button"
+                  >
+                    승인
+                  </button>
+                  <button
+                    className="text-destructive hover:underline"
+                    disabled={reviewKnowledgeArtifact.isPending}
+                    onClick={() =>
+                      reviewKnowledgeArtifact.mutate({
+                        artifactId: artifact.id,
+                        status: "rejected",
+                        workspaceId,
+                      })
+                    }
+                    type="button"
+                  >
+                    폐기
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {isOwner && workspaceId && (
+            <Button
+              className="mt-3 w-full"
+              disabled={createTrainingDataset.isPending}
+              onClick={() => createTrainingDataset.mutate({ workspaceId })}
+              variant="ghost"
+            >
+              {createTrainingDataset.isPending
+                ? "학습자료 생성 중…"
+                : "도움됨 피드백으로 학습자료 만들기"}
+            </Button>
+          )}
+          {trainingDatasets.data?.[0] && (
+            <p className="text-muted-foreground mt-2 text-xs">
+              최신 학습자료: {trainingDatasets.data[0].version} · 예시{" "}
+              {trainingDatasets.data[0].exampleCount}개
+            </p>
+          )}
         </details>
         <details className="mt-5 border-t pt-4">
           <summary className="cursor-pointer text-sm font-medium">

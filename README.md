@@ -97,7 +97,7 @@ pnpm agent:demo:check
 pnpm dev:local
 ```
 
-Open `http://localhost:3000`. The development identity provider accepts any
+Open `http://localhost:43100`. The development identity provider accepts any
 non-empty username and password. After signing in, create a coding workspace,
 start a conversation, upload a Markdown/text code note, and ask for a review
 or test plan. The default local model is `qwen2.5:3b`; run `ollama serve` if the
@@ -110,11 +110,11 @@ port `59001` by default. Stop it with `pnpm storage:stop`.
 
 The API endpoints are:
 
-- Liveness: `http://localhost:5000/health/live`
-- S3-backed readiness: `http://localhost:5000/health/ready`
-- Interactive API explorer: `http://localhost:5000/docs`
-- OpenAPI document: `http://localhost:5000/openapi.json`
-- tRPC: `http://localhost:5000/api/trpc`
+- Liveness: `http://localhost:43101/health/live`
+- S3-backed readiness: `http://localhost:43101/health/ready`
+- Interactive API explorer: `http://localhost:43101/docs`
+- OpenAPI document: `http://localhost:43101/openapi.json`
+- tRPC: `http://localhost:43101/api/trpc`
 
 See [Application Architecture](./docs/architecture.md) for request flow and
 workspace boundaries, and [OpenID Connect Authentication](./docs/authentication.md)

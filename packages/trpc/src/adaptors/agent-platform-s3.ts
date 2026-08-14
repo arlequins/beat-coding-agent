@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FeedbackKind } from "@arlequins/agent-core";
+import {
+  buildKnowledgeDraft,
+  buildTrainingExample,
+  type KnowledgeArtifact,
+  type KnowledgeArtifactKind,
+  type KnowledgeArtifactStatus,
+  makeDatasetVersion,
+} from "@arlequins/coding-agent";
 import type { JsonObjectStore } from "./s3-json-store";
 import { ObjectAlreadyExistsError, ObjectConflictError } from "./s3-json-store";
 
@@ -159,6 +167,43 @@ type ReleaseHead = {
   releaseId: string;
   snapshotKey: string;
 };
+type KnowledgeHead = KnowledgeArtifact;
+type KnowledgeVersion = KnowledgeArtifact & { versionId: string };
+type AsyncJobKind =
+  | "knowledge-consolidation"
+  | "dataset-build"
+  | "fine-tune"
+  | "feedback-investigation";
+type AsyncJob = {
+  completedAt?: string;
+  createdAt: string;
+  estimatedCompletionAt?: string;
+  error?: string;
+  id: string;
+  kind: AsyncJobKind;
+  result?: Record<string, unknown>;
+  startedAt?: string;
+  status: "queued" | "running" | "completed" | "failed";
+  workspaceId: string;
+};
+type DatasetManifest = {
+  createdAt: string;
+  exampleCount: number;
+  format: "jsonl";
+  objectKey: string;
+  sourceFeedbackCount: number;
+  version: string;
+  workspaceId: string;
+};
+type GitHubSource = {
+  addedAt: string;
+  defaultBranch?: string;
+  fullName: string;
+  id: string;
+  lastSyncedAt?: string;
+  url: string;
+  workspaceId: string;
+};
 export type AgentJobLease = {
   estimatedCompletionAt: string;
   etag: string;
@@ -179,6 +224,13 @@ const stateKey = (workspaceId: string, type: string, id: string) =>
   `workspaces/${workspaceId}/state/${type}/${id}.json`;
 const collectionPrefix = (workspaceId: string, type: string) =>
   `workspaces/${workspaceId}/state/${type}/`;
+const knowledgeHeadKey = (workspaceId: string, artifactId: string) =>
+  stateKey(workspaceId, "knowledge", `${artifactId}/head`);
+const knowledgeVersionKey = (
+  workspaceId: string,
+  artifactId: string,
+  versionId: string,
+) => stateKey(workspaceId, "knowledge", `${artifactId}/versions/${versionId}`);
 
 function eventKey(workspaceId: string, id: string) {
   return `workspaces/${workspaceId}/events/${Date.now()
@@ -236,6 +288,25 @@ function publicIndexRun(value: IndexRun) {
     ...value,
     completedAt: date(value.completedAt) ?? null,
     createdAt: new Date(value.createdAt),
+    error: value.error ?? null,
+    startedAt: date(value.startedAt) ?? null,
+  };
+}
+
+function publicKnowledge(value: KnowledgeArtifact) {
+  return {
+    ...value,
+    createdAt: new Date(value.createdAt),
+    updatedAt: new Date(value.updatedAt),
+  };
+}
+
+function publicJob(value: AsyncJob) {
+  return {
+    ...value,
+    completedAt: date(value.completedAt) ?? null,
+    createdAt: new Date(value.createdAt),
+    estimatedCompletionAt: date(value.estimatedCompletionAt) ?? null,
     error: value.error ?? null,
     startedAt: date(value.startedAt) ?? null,
   };
@@ -399,6 +470,18 @@ export function createS3AgentPlatformRepository(
         },
         current.etag,
       );
+    },
+    async activeJob(userId: string) {
+      const current = await store.get<AgentJobHead>(
+        `identities/${userId}/heads/active-job.json`,
+      );
+      if (current?.value.status !== "running") return null;
+      return {
+        ...current.value,
+        estimatedCompletionAt: new Date(current.value.estimatedCompletionAt),
+        leaseExpiresAt: new Date(current.value.leaseExpiresAt),
+        startedAt: new Date(current.value.startedAt),
+      };
     },
     async createWorkspace(input: {
       name: string;
@@ -907,6 +990,451 @@ export function createS3AgentPlatformRepository(
       );
       await appendEvent(actor, "memory.deleted", memory.id);
       return { id: memory.id };
+    },
+    async createKnowledgeDraft(
+      actor: WorkspaceActor,
+      input: {
+        content: string;
+        kind: KnowledgeArtifactKind;
+        sourceConversationId?: string;
+        title: string;
+      },
+    ) {
+      await assertMember(actor);
+      if (input.sourceConversationId)
+        await required(
+          store,
+          stateKey(
+            actor.workspaceId,
+            "conversations",
+            input.sourceConversationId,
+          ),
+          "Conversation was not found in this workspace",
+        );
+      const createdAt = timestamp();
+      const artifact = buildKnowledgeDraft({
+        ...input,
+        createdAt,
+        id: randomUUID(),
+        workspaceId: actor.workspaceId,
+      });
+      const versionId = randomUUID();
+      const version: KnowledgeVersion = { ...artifact, versionId };
+      await store.create(
+        knowledgeVersionKey(actor.workspaceId, artifact.id, versionId),
+        version,
+      );
+      await store.create(
+        knowledgeHeadKey(actor.workspaceId, artifact.id),
+        artifact,
+      );
+      await appendEvent(actor, "knowledge.draft.created", artifact.id, {
+        kind: artifact.kind,
+        sourceConversationId: artifact.sourceConversationId,
+      });
+      return publicKnowledge(artifact);
+    },
+    async listKnowledgeArtifacts(actor: WorkspaceActor) {
+      await assertMember(actor);
+      return (
+        await store.list<KnowledgeHead>(
+          collectionPrefix(actor.workspaceId, "knowledge"),
+        )
+      )
+        .filter(({ key }) => key.endsWith("/head.json"))
+        .map(({ value }) => value)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .map(publicKnowledge);
+    },
+    async reviewKnowledgeArtifact(
+      actor: WorkspaceActor,
+      input: {
+        artifactId: string;
+        status: Exclude<KnowledgeArtifactStatus, "inbox">;
+      },
+    ) {
+      await assertOwner(actor);
+      const artifact = await mutate<KnowledgeHead>(
+        store,
+        knowledgeHeadKey(actor.workspaceId, input.artifactId),
+        (current) => ({
+          ...current,
+          status: input.status,
+          updatedAt: timestamp(),
+          version: current.version + 1,
+        }),
+      );
+      const versionId = randomUUID();
+      await store.create(
+        knowledgeVersionKey(actor.workspaceId, artifact.id, versionId),
+        { ...artifact, versionId },
+      );
+      await appendEvent(actor, `knowledge.${input.status}`, artifact.id, {
+        version: artifact.version,
+      });
+      return publicKnowledge(artifact);
+    },
+    async listKnowledgeVersions(actor: WorkspaceActor, artifactId: string) {
+      await assertMember(actor);
+      await required(
+        store,
+        knowledgeHeadKey(actor.workspaceId, artifactId),
+        "Knowledge artifact was not found in this workspace",
+      );
+      return (
+        await values<KnowledgeVersion>(
+          store,
+          collectionPrefix(
+            actor.workspaceId,
+            `knowledge/${artifactId}/versions`,
+          ),
+        )
+      )
+        .sort((left, right) => right.version - left.version)
+        .map((item) => ({
+          ...publicKnowledge(item),
+          versionId: item.versionId,
+        }));
+    },
+    async queueKnowledgeConsolidation(
+      actor: WorkspaceActor,
+      input: { conversationId: string; estimatedDurationMs?: number },
+    ) {
+      await assertMember(actor);
+      const conversation = await required<Conversation>(
+        store,
+        stateKey(actor.workspaceId, "conversations", input.conversationId),
+        "Conversation was not found in this workspace",
+      );
+      const createdAt = now();
+      const job: AsyncJob = {
+        createdAt: createdAt.toISOString(),
+        estimatedCompletionAt: new Date(
+          createdAt.getTime() + (input.estimatedDurationMs ?? 60_000),
+        ).toISOString(),
+        id: randomUUID(),
+        kind: "knowledge-consolidation",
+        status: "queued",
+        workspaceId: actor.workspaceId,
+      };
+      await store.create(stateKey(actor.workspaceId, "jobs", job.id), job);
+      await appendEvent(actor, "knowledge.consolidation.queued", job.id, {
+        conversationId: conversation.value.id,
+      });
+      return publicJob(job);
+    },
+    async runKnowledgeConsolidation(actor: WorkspaceActor, jobId: string) {
+      await assertOwner(actor);
+      await mutate<AsyncJob>(
+        store,
+        stateKey(actor.workspaceId, "jobs", jobId),
+        (current) => ({
+          ...current,
+          startedAt: current.startedAt ?? timestamp(),
+          status: "running",
+        }),
+      );
+      try {
+        const events = await values<AuditEvent>(
+          store,
+          `workspaces/${actor.workspaceId}/events/`,
+        );
+        const conversationId = events
+          .filter(
+            (event) =>
+              event.action === "knowledge.consolidation.queued" &&
+              event.subjectId === jobId,
+          )
+          .at(-1)?.metadata?.conversationId;
+        if (typeof conversationId !== "string")
+          throw new Error("Consolidation conversation was not found");
+        const conversation = await required<Conversation>(
+          store,
+          stateKey(actor.workspaceId, "conversations", conversationId),
+          "Conversation was not found in this workspace",
+        );
+        const messages = await values<Message>(
+          store,
+          collectionPrefix(actor.workspaceId, `messages/${conversationId}`),
+        );
+        const content = messages
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+          .map((message) => `### ${message.role}\n${message.content}`)
+          .join("\n\n")
+          .slice(0, 100_000);
+        const artifact = await this.createKnowledgeDraft(actor, {
+          content,
+          kind: "project-note",
+          sourceConversationId: conversationId,
+          title: conversation.value.title,
+        });
+        const completed = await mutate<AsyncJob>(
+          store,
+          stateKey(actor.workspaceId, "jobs", jobId),
+          (current) => ({
+            ...current,
+            completedAt: timestamp(),
+            result: { artifactId: artifact.id },
+            status: "completed",
+          }),
+        );
+        await appendEvent(actor, "knowledge.consolidation.completed", jobId, {
+          artifactId: artifact.id,
+        });
+        return publicJob(completed);
+      } catch (error) {
+        const failed = await mutate<AsyncJob>(
+          store,
+          stateKey(actor.workspaceId, "jobs", jobId),
+          (current) => ({
+            ...current,
+            completedAt: timestamp(),
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 1_000)
+                : "Consolidation failed",
+            status: "failed",
+          }),
+        );
+        return publicJob(failed);
+      }
+    },
+    async listJobs(actor: WorkspaceActor) {
+      await assertMember(actor);
+      return (
+        await values<AsyncJob>(
+          store,
+          collectionPrefix(actor.workspaceId, "jobs"),
+        )
+      )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, 50)
+        .map(publicJob);
+    },
+    async listFeedback(actor: WorkspaceActor) {
+      await assertOwner(actor);
+      return (
+        await values<Feedback>(
+          store,
+          collectionPrefix(actor.workspaceId, "feedback"),
+        )
+      )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map((feedback) => ({
+          ...feedback,
+          createdAt: new Date(feedback.createdAt),
+        }));
+    },
+    async createTrainingDataset(actor: WorkspaceActor) {
+      await assertOwner(actor);
+      const feedback = (
+        await values<Feedback>(
+          store,
+          collectionPrefix(actor.workspaceId, "feedback"),
+        )
+      ).filter((item) => item.kind === "helpful");
+      const messages = await values<Message>(
+        store,
+        collectionPrefix(actor.workspaceId, "messages"),
+      );
+      const citations = await store.list<CitationRecord>(
+        collectionPrefix(actor.workspaceId, "citations"),
+      );
+      const examples = feedback.flatMap((item) => {
+        const answer = messages.find(({ id }) => id === item.messageId);
+        if (!answer) return [];
+        const question = messages
+          .filter(
+            ({ conversationId }) => conversationId === answer.conversationId,
+          )
+          .filter(
+            (value) =>
+              value.id !== answer.id &&
+              value.createdAt <= answer.createdAt &&
+              value.role === "user",
+          )
+          .sort((left, right) =>
+            right.createdAt.localeCompare(left.createdAt),
+          )[0];
+        if (!question) return [];
+        return [
+          buildTrainingExample({
+            answer: answer.content,
+            citations: citations
+              .filter(({ value }) => value.messageId === answer.id)
+              .map(({ value }) => value.chunkId),
+            feedbackKind: item.kind,
+            question: question.content,
+            sourceMessageId: answer.id,
+          }),
+        ];
+      });
+      const version = makeDatasetVersion(now());
+      const datasetPrefix = collectionPrefix(
+        actor.workspaceId,
+        `datasets/${version}`,
+      );
+      const objectKey = `${datasetPrefix}examples.jsonl`;
+      const manifestKey = `${datasetPrefix}manifest.json`;
+      await store.create(objectKey, {
+        lines: examples.map((example) => JSON.stringify(example)),
+      });
+      const manifest: DatasetManifest = {
+        createdAt: timestamp(),
+        exampleCount: examples.length,
+        format: "jsonl",
+        objectKey,
+        sourceFeedbackCount: feedback.length,
+        version,
+        workspaceId: actor.workspaceId,
+      };
+      await store.create(manifestKey, manifest);
+      await appendEvent(actor, "dataset.created", version, {
+        exampleCount: examples.length,
+        sourceFeedbackCount: feedback.length,
+      });
+      return { ...manifest, createdAt: new Date(manifest.createdAt) };
+    },
+    async listTrainingDatasets(actor: WorkspaceActor) {
+      await assertOwner(actor);
+      return (
+        await values<DatasetManifest>(
+          store,
+          collectionPrefix(actor.workspaceId, "datasets"),
+        )
+      )
+        .filter((manifest) => manifest.format === "jsonl")
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map((manifest) => ({
+          ...manifest,
+          createdAt: new Date(manifest.createdAt),
+        }));
+    },
+    async queueFineTune(
+      actor: WorkspaceActor,
+      input: { baseModel: string; datasetVersion: string },
+    ) {
+      await assertOwner(actor);
+      const dataset = (
+        await values<DatasetManifest>(
+          store,
+          collectionPrefix(actor.workspaceId, "datasets"),
+        )
+      ).find((manifest) => manifest.version === input.datasetVersion);
+      if (!dataset)
+        throw new Error("Training dataset was not found in this workspace");
+      const createdAt = now();
+      const job: AsyncJob = {
+        createdAt: createdAt.toISOString(),
+        estimatedCompletionAt: new Date(
+          createdAt.getTime() + 30 * 60_000,
+        ).toISOString(),
+        id: randomUUID(),
+        kind: "fine-tune",
+        result: {
+          baseModel: input.baseModel,
+          datasetVersion: input.datasetVersion,
+          mode: "approval-required",
+        },
+        status: "queued",
+        workspaceId: actor.workspaceId,
+      };
+      await store.create(stateKey(actor.workspaceId, "jobs", job.id), job);
+      await appendEvent(actor, "fine-tune.queued", job.id, {
+        baseModel: input.baseModel,
+        datasetVersion: input.datasetVersion,
+      });
+      return publicJob(job);
+    },
+    async addGitHubSource(
+      actor: WorkspaceActor,
+      input: { defaultBranch?: string; fullName: string; url: string },
+    ) {
+      await assertOwner(actor);
+      const existing = (
+        await values<GitHubSource>(
+          store,
+          collectionPrefix(actor.workspaceId, "github-sources"),
+        )
+      ).find((source) => source.fullName === input.fullName);
+      const source: GitHubSource = {
+        addedAt: existing?.addedAt ?? timestamp(),
+        ...(input.defaultBranch ? { defaultBranch: input.defaultBranch } : {}),
+        fullName: input.fullName,
+        id: existing?.id ?? randomUUID(),
+        lastSyncedAt: existing?.lastSyncedAt,
+        url: input.url,
+        workspaceId: actor.workspaceId,
+      };
+      const key = stateKey(actor.workspaceId, "github-sources", source.id);
+      if (existing) {
+        const current = await store.get<GitHubSource>(key);
+        if (current?.etag) await store.replace(key, source, current.etag);
+      } else {
+        await store.create(key, source);
+      }
+      await appendEvent(actor, "github.source.added", source.id, {
+        fullName: source.fullName,
+        mode: "read-only",
+      });
+      return {
+        ...source,
+        addedAt: new Date(source.addedAt),
+        lastSyncedAt: date(source.lastSyncedAt) ?? null,
+      };
+    },
+    async listGitHubSources(actor: WorkspaceActor) {
+      await assertMember(actor);
+      return (
+        await values<GitHubSource>(
+          store,
+          collectionPrefix(actor.workspaceId, "github-sources"),
+        )
+      )
+        .sort((left, right) => left.fullName.localeCompare(right.fullName))
+        .map((source) => ({
+          ...source,
+          addedAt: new Date(source.addedAt),
+          lastSyncedAt: date(source.lastSyncedAt) ?? null,
+        }));
+    },
+    async recordGitHubEvidence(
+      actor: WorkspaceActor,
+      input: {
+        content: string;
+        path: string;
+        repository: string;
+        sha: string;
+        url: string;
+      },
+    ) {
+      await assertOwner(actor);
+      const contentHash = createHash("sha256")
+        .update(input.content)
+        .digest("hex");
+      const key = `workspaces/${actor.workspaceId}/github-evidence/${input.repository}/${contentHash}.json`;
+      await store
+        .create(key, {
+          ...input,
+          contentHash,
+          createdAt: timestamp(),
+          workspaceId: actor.workspaceId,
+        })
+        .catch((error) => {
+          if (!(error instanceof ObjectAlreadyExistsError)) throw error;
+        });
+      await appendEvent(actor, "github.evidence.recorded", undefined, {
+        path: input.path,
+        repository: input.repository,
+        sha: input.sha,
+      });
+      return {
+        contentHash,
+        path: input.path,
+        repository: input.repository,
+        sha: input.sha,
+        url: input.url,
+      };
     },
     async purgeExpiredMemories(actor: WorkspaceActor) {
       await assertOwner(actor);

@@ -3,6 +3,7 @@ import { Toaster } from "@arlequins/ui/toast";
 import type { Metadata, Viewport } from "next";
 
 import { OidcAuthProvider } from "~/auth/provider";
+import { PwaRegister } from "~/components/pwa-register";
 import { siteConfig } from "~/config/site";
 import { TRPCReactProvider } from "~/trpc/react";
 
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
     template: `%s | ${siteConfig.name}`,
   },
   description: siteConfig.description,
+  manifest: "/manifest.webmanifest",
 };
 
 export const viewport: Viewport = {
@@ -29,6 +31,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
       <body className="bg-background text-foreground min-h-screen font-sans antialiased">
         <ThemeProvider>
           <OidcAuthProvider>
+            <PwaRegister />
             <TRPCReactProvider>{props.children}</TRPCReactProvider>
           </OidcAuthProvider>
           <Toaster />

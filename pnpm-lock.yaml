@@ -473,10 +473,16 @@ importers:
       '@arlequins/agent-core':
         specifier: workspace:*
         version: link:../agent-core
+      '@arlequins/auth':
+        specifier: workspace:*
+        version: link:../auth
     devDependencies:
       '@arlequins/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

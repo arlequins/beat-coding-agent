@@ -107,3 +107,71 @@ export const createEvaluationCaseInputSchema = workspaceScopeInputSchema.extend(
 export const publishReleaseInputSchema = workspaceScopeInputSchema.extend({
   minimumCitationRecall: z.number().min(0).max(1).default(0.75),
 });
+export const knowledgeKindSchema = z.enum([
+  "architecture",
+  "decision",
+  "coding-rule",
+  "investigation",
+  "project-note",
+]);
+export const createKnowledgeDraftInputSchema = workspaceScopeInputSchema.extend(
+  {
+    content: z.string().trim().min(1).max(100_000),
+    kind: knowledgeKindSchema,
+    sourceConversationId: z.uuid().optional(),
+    title: z.string().trim().min(1).max(256),
+  },
+);
+export const reviewKnowledgeArtifactInputSchema =
+  workspaceScopeInputSchema.extend({
+    artifactId: z.uuid(),
+    status: z.enum(["draft", "canonical", "rejected"]),
+  });
+export const knowledgeArtifactScopeInputSchema =
+  workspaceScopeInputSchema.extend({
+    artifactId: z.uuid(),
+  });
+export const queueConsolidationInputSchema =
+  conversationScopeInputSchema.extend({
+    estimatedDurationMs: z.number().int().positive().max(3_600_000).optional(),
+  });
+export const jobScopeInputSchema = workspaceScopeInputSchema.extend({
+  jobId: z.uuid(),
+});
+export const createFineTuneJobInputSchema = workspaceScopeInputSchema.extend({
+  baseModel: z.string().trim().min(1).max(256),
+  datasetVersion: z
+    .string()
+    .trim()
+    .regex(/^dataset-[0-9]{14}$/),
+});
+export const addGitHubSourceInputSchema = workspaceScopeInputSchema.extend({
+  defaultBranch: z.string().trim().min(1).max(256).optional(),
+  fullName: z
+    .string()
+    .trim()
+    .regex(/^[^/\s]+\/[^/\s]+$/),
+  url: z.url(),
+});
+export const recordGitHubEvidenceInputSchema = workspaceScopeInputSchema.extend(
+  {
+    content: z.string().min(1).max(1_000_000),
+    path: z.string().trim().min(1).max(1_024),
+    repository: z
+      .string()
+      .trim()
+      .regex(/^[^/\s]+\/[^/\s]+$/),
+    sha: z.string().trim().min(7).max(128),
+    url: z.url(),
+  },
+);
+export const githubRepositoryInputSchema = workspaceScopeInputSchema.extend({
+  fullName: z
+    .string()
+    .trim()
+    .regex(/^[^/\s]+\/[^/\s]+$/),
+});
+export const githubFileInputSchema = githubRepositoryInputSchema.extend({
+  path: z.string().trim().min(1).max(1_024),
+  ref: z.string().trim().min(1).max(256).optional(),
+});

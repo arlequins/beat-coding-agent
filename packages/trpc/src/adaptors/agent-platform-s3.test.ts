@@ -351,4 +351,100 @@ describe("S3 agent platform repository", () => {
       ),
     ).toMatchObject({ value: { schemaVersion: 1 } });
   });
+
+  it("consolidates a conversation, builds a reviewed dataset, and keeps GitHub evidence read-only", async () => {
+    const { actor, repository, store } = await fixture();
+    const conversation = await repository.createConversation(
+      actor,
+      "설계 기록",
+    );
+    await repository.addMessage(actor, {
+      content: "S3 immutable event log로 결정",
+      conversationId: conversation.id,
+      role: "user",
+    });
+    const answer = await repository.addMessage(actor, {
+      content: "초안은 검토 후 canonical로 승격합니다.",
+      conversationId: conversation.id,
+      role: "assistant",
+    });
+    await repository.submitFeedback(actor, {
+      kind: "helpful",
+      messageId: answer.id,
+    });
+    expect(await repository.listFeedback(actor)).toMatchObject([
+      { kind: "helpful", messageId: answer.id },
+    ]);
+    expect(
+      await store.list(`workspaces/${actor.workspaceId}/state/messages/`),
+    ).toHaveLength(2);
+    expect(await repository.listMessages(actor, conversation.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: answer.id, role: "assistant" }),
+      ]),
+    );
+
+    const draft = await repository.createKnowledgeDraft(actor, {
+      content: "검토할 아키텍처 원칙",
+      kind: "architecture",
+      sourceConversationId: conversation.id,
+      title: "  이벤트 로그 원칙  ",
+    });
+    expect(draft).toMatchObject({ status: "draft", title: "이벤트 로그 원칙" });
+    expect(
+      await repository.listKnowledgeVersions(actor, draft.id),
+    ).toHaveLength(1);
+    await repository.reviewKnowledgeArtifact(actor, {
+      artifactId: draft.id,
+      status: "canonical",
+    });
+    expect(
+      await repository.listKnowledgeVersions(actor, draft.id),
+    ).toMatchObject([
+      { status: "canonical", version: 2 },
+      { status: "draft", version: 1 },
+    ]);
+
+    const queued = await repository.queueKnowledgeConsolidation(actor, {
+      conversationId: conversation.id,
+      estimatedDurationMs: 10,
+    });
+    const completed = await repository.runKnowledgeConsolidation(
+      actor,
+      queued.id,
+    );
+    expect(completed).toMatchObject({ status: "completed" });
+    expect(await repository.listKnowledgeArtifacts(actor)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "project-note", status: "draft" }),
+      ]),
+    );
+
+    const dataset = await repository.createTrainingDataset(actor);
+    expect(dataset).toMatchObject({ exampleCount: 1, format: "jsonl" });
+    expect(await repository.listTrainingDatasets(actor)).toHaveLength(1);
+    await expect(
+      repository.queueFineTune(actor, {
+        baseModel: "qwen2.5:3b",
+        datasetVersion: dataset.version,
+      }),
+    ).resolves.toMatchObject({ kind: "fine-tune", status: "queued" });
+
+    await repository.addGitHubSource(actor, {
+      fullName: "arlequins/beat",
+      url: "https://github.com/arlequins/beat",
+    });
+    expect(await repository.listGitHubSources(actor)).toMatchObject([
+      { fullName: "arlequins/beat" },
+    ]);
+    await expect(
+      repository.recordGitHubEvidence(actor, {
+        content: "read-only evidence",
+        path: "README.md",
+        repository: "arlequins/beat",
+        sha: "1234567",
+        url: "https://github.com/arlequins/beat/blob/main/README.md",
+      }),
+    ).resolves.toMatchObject({ path: "README.md" });
+  });
 });

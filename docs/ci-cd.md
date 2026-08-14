@@ -73,6 +73,12 @@ Secrets Manager ARN or a base name. A complete ARN is read directly. A base
 name resolves to `<stage>/<base-name>/root`, such as
 `production/environments/root`.
 
+For this single-user coding agent, store `CODING_AGENT_OWNER_EMAILS` and then
+the stable `CODING_AGENT_OWNER_IDENTITIES` in the protected runtime secret.
+Store `GITHUB_READONLY_APP_TOKEN` only as a short-lived GitHub App installation
+token with `contents:read`; never put it in the browser or in a repository
+secret used by preview builds.
+
 The secret value must be a JSON object containing the environment values
 required by the selected SST application. The reusable workflow validates all
 deployment inputs, assumes the configured AWS role, writes the secret to the

@@ -18,10 +18,12 @@
     "typecheck": "tsc --noEmit --emitDeclarationOnly false"
   },
   "dependencies": {
-    "@arlequins/agent-core": "workspace:*"
+    "@arlequins/agent-core": "workspace:*",
+    "@arlequins/auth": "workspace:*"
   },
   "devDependencies": {
     "@arlequins/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

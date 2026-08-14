@@ -14,7 +14,7 @@ const [{ serve }, { app }] = await Promise.all([
   import("./app"),
 ]);
 
-const port = serverEnv.API_PORT ?? 5000;
+const port = serverEnv.API_PORT ?? 43101;
 const logger = createLogger({ service: "api" });
 
 serve({ fetch: app.fetch, port }, (info) => {

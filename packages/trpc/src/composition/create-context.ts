@@ -5,6 +5,11 @@ import {
   createOllamaModelProvider,
 } from "@arlequins/agent-ollama";
 import { authApi } from "@arlequins/auth";
+import {
+  createGitHubReadOnlyClient,
+  isCodingAgentOwner,
+  parseOwnerConfig,
+} from "@arlequins/coding-agent";
 import { serverEnv } from "@arlequins/env";
 import { createS3AgentPlatformRepository } from "../adaptors/agent-platform-s3";
 import {
@@ -49,6 +54,15 @@ export async function createTRPCContext(
   const session = tokenSession
     ? deriveTemplateSession(tokenSession, bootstrapAdministratorIdentities())
     : null;
+  const ownerConfig = parseOwnerConfig({
+    emails: serverEnv.CODING_AGENT_OWNER_EMAILS,
+    identities: serverEnv.CODING_AGENT_OWNER_IDENTITIES,
+  });
+  const ownerConfigured =
+    Boolean(ownerConfig.emails?.size) || Boolean(ownerConfig.identities?.size);
+  const codingAgentOwner =
+    !ownerConfigured ||
+    (session ? isCodingAgentOwner(session, ownerConfig) : false);
   const agent = agentRepository();
   const embedding = serverEnv.OLLAMA_BASE_URL
     ? createOllamaEmbeddingProvider({
@@ -80,6 +94,7 @@ export async function createTRPCContext(
     logger: options.logger,
     telemetry: options.telemetry,
     session,
+    codingAgentOwner,
     services: {
       agent,
       knowledgeSearch: createS3KnowledgeSearch(agent, { embedding }),
@@ -88,6 +103,12 @@ export async function createTRPCContext(
       modelId: serverEnv.BEDROCK_MODEL_ID ?? serverEnv.OLLAMA_MODEL,
       embedding,
       documentExtraction: createTextDocumentExtraction(),
+      github: serverEnv.GITHUB_READONLY_APP_TOKEN
+        ? createGitHubReadOnlyClient({
+            apiUrl: serverEnv.GITHUB_API_URL,
+            token: serverEnv.GITHUB_READONLY_APP_TOKEN,
+          })
+        : undefined,
     },
   };
 }

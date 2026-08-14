@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Beat Coding Agent",
+  "short_name": "Beat Coding",
+  "description": "Beat 인증 기반 개인 코딩 지식 에이전트",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    }
+  ]
+}
