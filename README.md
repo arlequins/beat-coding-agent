@@ -1,0 +1,230 @@
+# beat-coding-agent
+
+Beat Coding Agent is a personal coding and development assistant. It uses
+Beat's OpenID Connect service for sign-in, keeps coding conversations and
+evidence in a separate workspace, and starts locally with MinIO, Ollama, and
+the included OIDC mock.
+
+The first vertical slice is deliberately read-only: it can explain code,
+review uploaded notes, propose changes, inspect test plans, and cite the
+retrieved evidence. It does not edit files, run commands, create commits, or
+deploy changes.
+
+Read [Coding Agent Architecture](./docs/coding-agent-architecture.md) before
+adding repository tools. Shared Beat identity does not grant this project
+access to Beat Agent's counseling memory.
+
+## Cost-aware defaults
+
+- Local S3-compatible storage and a local model are the default development path.
+- PostgreSQL and Aurora remain optional extension workspaces and are not required
+  by the default agent runtime.
+- Do not create a NAT Gateway, always-on container, or production database in a
+  personal sandbox without an explicit decision.
+- Treat Amazon Bedrock inference as usage-priced, even when the surrounding AWS
+  infrastructure is within a free-tier allowance.
+
+See [Optional Aurora PostgreSQL with SST](./docs/aurora-sst.md).
+
+**v1.0.1** - A reusable pnpm monorepo template for a client-only Next.js
+frontend, Hono and tRPC API, Drizzle PostgreSQL persistence, OIDC authentication,
+and optional SST batch and deployment infrastructure.
+
+## Stack
+
+| Area | Technology |
+| --- | --- |
+| Workspace | pnpm catalogs, Turborepo, TypeScript, Biome |
+| Web | Next.js App Router, client-only static export, React, Tailwind CSS |
+| API | Hono, tRPC, local Node.js server, AWS Lambda deployment |
+| Persistence | S3/MinIO immutable events, conditional read models, and reviewed releases |
+| Authentication | OpenID Connect Authorization Code with PKCE and JWT validation |
+| Infrastructure | SST Ion, CloudFront, Lambda, Step Functions, EventBridge |
+| Testing | Vitest, isolated MinIO integration tests, Playwright, accessibility checks |
+
+Internal packages use the placeholder scope `@arlequins/*`. The initializer replaces
+it when creating a project.
+
+## Requirements
+
+- Node.js and pnpm versions matching [`package.json`](./package.json)
+- Docker for local MinIO and end-to-end tests
+- AWS credentials only for cloud-backed SST commands
+
+Use the Node.js version in [`.nvmrc`](./.nvmrc). The preinstall check reports an
+actionable error when the runtime does not match.
+
+## Create a Project
+
+Preview repository-wide replacements before applying them:
+
+```bash
+pnpm template:init -- --name customer-portal --display-name "Customer Portal" --scope @company --domain customer.example.org --dry-run
+pnpm template:init -- --name customer-portal --display-name "Customer Portal" --scope @company --domain customer.example.org --description "Customer portal"
+pnpm install
+```
+
+The initializer updates package names, SST application names, repository
+metadata, and example domains. It refuses to modify a dirty worktree unless
+`--force` is provided.
+
+`--display-name` controls user-facing branding and defaults to a title-cased
+version of `--name`. The generated `template.features.json` records the project
+identity, selected preset, and enabled optional features for later tooling.
+
+The default preset retains the complete template. For a smaller starting point:
+
+```bash
+pnpm template:init -- --name customer-portal --scope @company --domain customer.example.org --preset minimal --prune
+pnpm install
+```
+
+The minimal preset keeps `web + api + trpc + db`. Use `--features` to select
+`auth`, `batch`, `sst`, or `example-ui`. `--prune` physically removes omitted
+modules and the lockfile; the next install creates a lockfile for the selected
+composition.
+
+## Local Quickstart
+
+Start MinIO and launch the local OIDC provider, API, and web app:
+
+```bash
+pnpm install
+pnpm agent:setup
+ollama pull qwen2.5:3b
+ollama pull nomic-embed-text
+pnpm agent:demo:check
+pnpm dev:local
+```
+
+Open `http://localhost:3000`. The development identity provider accepts any
+non-empty username and password. After signing in, create a coding workspace,
+start a conversation, upload a Markdown/text code note, and ask for a review
+or test plan. The default local model is `qwen2.5:3b`; run `ollama serve` if the
+Ollama service is not already running. `nomic-embed-text` enables semantic
+document retrieval; when it is unavailable, the application safely falls back
+to keyword search.
+Alternatively run `docker compose --profile ollama up -d ollama` (native Ollama
+is generally faster on Apple Silicon). MinIO uses API port `59000` and console
+port `59001` by default. Stop it with `pnpm storage:stop`.
+
+The API endpoints are:
+
+- Liveness: `http://localhost:5000/health/live`
+- S3-backed readiness: `http://localhost:5000/health/ready`
+- Interactive API explorer: `http://localhost:5000/docs`
+- OpenAPI document: `http://localhost:5000/openapi.json`
+- tRPC: `http://localhost:5000/api/trpc`
+
+See [Application Architecture](./docs/architecture.md) for request flow and
+workspace boundaries, and [OpenID Connect Authentication](./docs/authentication.md)
+for provider configuration.
+
+## Common Commands
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev:local` | Start the complete local application stack. |
+| `pnpm agent:setup` | Create `.env.localhost` without overwriting an existing local configuration. |
+| `pnpm agent:demo:check` | Verify the local Ollama chat and embedding models without downloading them. |
+| `pnpm dev` | Run development tasks when dependencies are already available. |
+| `pnpm dev:sst` | Run web, API, and batch through cloud-backed SST development. |
+| `pnpm check` / `pnpm check:fix` | Check or fix Biome formatting and lint rules. |
+| `pnpm typecheck` | Typecheck every workspace. |
+| `pnpm test` | Run unit and contract tests. |
+| `pnpm test:e2e` | Run isolated MinIO and browser end-to-end tests. |
+| `pnpm storage:start` | Start MinIO and create the local agent bucket. |
+| `pnpm db:setup` | Apply committed migrations and pending seeds. |
+| `pnpm turbo gen` | Generate an application, package, or tRPC domain. |
+| `pnpm gen:feature` | Generate a clean-architecture command or query slice. |
+
+Optional PostgreSQL extension schema changes use:
+
+```bash
+pnpm db:create-migration --name=describe_change
+pnpm db:check
+```
+
+See [`packages/db-backbone/README.md`](./packages/db-backbone/README.md) for the
+migration workflow and [Database Operations](./docs/database-operations.md) for
+backup, restore, and deployment ordering.
+
+## Environment and Secrets
+
+- `.env.localhost.example` is the complete local-stack configuration.
+- `.env.example` documents shared and cloud-oriented variables.
+- `pnpm env:check` verifies environment schemas and examples stay synchronized.
+- `pnpm env:pull` and `pnpm env:push` synchronize supported values with AWS
+  Secrets Manager.
+
+Application code should access validated environment values through `@arlequins/env`
+instead of reading `process.env` throughout the codebase.
+
+## Local coding workspace operations
+
+The local coding agent accepts `.txt` and `.md` documents up to 1MB. It chunks
+them, creates local Ollama embeddings when `nomic-embed-text` is available, and
+stores citations with every response. If that optional embedding model is
+offline, safe workspace-scoped keyword retrieval remains available.
+
+Workspace owners manage documents, reviewed coding memories, retention, and the
+audit trail. Members can only act within workspaces where they have a
+membership. See [Coding Agent Architecture](./docs/coding-agent-architecture.md)
+for the capability boundary and planned GitHub integration.
+
+The default persistence model, concurrency rules, reviewed-release gate, and
+recovery procedure are documented in
+[S3-primary agent persistence](./docs/s3-primary-architecture.md).
+
+For a complete click-through local verification, see [Local agent demo](./docs/local-agent-demo.md).
+
+## Template Qualification
+
+Validate SST configuration without SST sign-in or AWS credentials:
+
+```bash
+cp .env.example .env
+pnpm test:sst
+```
+
+Validate complete generated repositories:
+
+```bash
+pnpm test:template-output full
+pnpm test:template-output minimal
+```
+
+These checks do not emulate AWS. Cloud deployment, preview stages, and sandbox
+smoke tests still require AWS credentials. See [SST Local Testing](./docs/sst-local-testing.md)
+and [Template Readiness](./docs/template-readiness.md).
+
+## Deployment
+
+- Web builds as a static export for S3 and CloudFront.
+- API deploys through a Lambda Function URL or API Gateway HTTP API preset.
+
+Read [Deployment and Supply-Chain Security](./docs/deployment-security.md) before
+configuring GitHub OIDC roles or production environments. Deployment-specific
+commands and tradeoffs live in [`apps/api/README.md`](./apps/api/README.md).
+The complete workflow map and required GitHub variables are documented in
+[CI/CD Operations](./docs/ci-cd.md).
+
+## Documentation
+
+Use the [documentation index](./docs/README.md) to find architecture,
+development, operations, security, and engineering conventions. Package-level
+details live beside their implementation under `apps/*/README.md` and
+`packages/*/README.md`.
+
+## Publishing a Fork
+
+1. Run `pnpm template:init` and prune unused modules.
+2. Replace example identity, domain, seed, and IAM values.
+3. Configure branch protection, deployment environments, and cloud roles.
+4. Update `LICENSE`, `NOTICE`, ownership, support, and incident contacts.
+5. Run local, generated-template, and relevant cloud qualification checks.
+
+## Changelog and License
+
+See [CHANGELOG.md](./CHANGELOG.md). The project is available under the
+[MIT License](./LICENSE), with upstream attribution in [NOTICE](./NOTICE).

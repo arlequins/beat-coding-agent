@@ -1,0 +1,8 @@
+{
+  "name": "beat-coding-agent",
+  "displayName": "Beat Coding Agent",
+  "scope": "@arlequins",
+  "domain": "coding.beat.localhost",
+  "preset": "full",
+  "features": ["auth", "sst"]
+}
