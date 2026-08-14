@@ -2,6 +2,13 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.3](https://github.com/arlequins/beat-coding-agent/compare/v0.2.2...v0.2.3) (2026-08-14)
+
+
+### Bug Fixes
+
+* **security:** remove vulnerable transitive esbuild ([0cde7e5](https://github.com/arlequins/beat-coding-agent/commit/0cde7e5f9ab977b7fecd69319d74080b053e5d59))
+
 ## [0.2.2](https://github.com/arlequins/beat-coding-agent/compare/v0.2.1...v0.2.2) (2026-08-14)
 
 
