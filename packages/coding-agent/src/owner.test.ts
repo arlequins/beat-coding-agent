@@ -4,7 +4,7 @@ import { isCodingAgentOwner, parseOwnerConfig, sessionIdentity } from "./owner";
 const session = {
   user: {
     id: "owner-user",
-    email: "owner@example.com",
+    email: "OWNER@EXAMPLE.COM",
     issuer: "https://beat.example.com",
     name: "Owner",
     roles: ["member" as const],
