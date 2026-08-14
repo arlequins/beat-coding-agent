@@ -1,3 +1,4 @@
+import type { CodexConversation } from "@arlequins/coding-agent";
 import { describe, expect, it } from "vitest";
 import {
   AgentJobBusyError,
@@ -35,6 +36,58 @@ describe("S3 agent platform repository", () => {
     expect(await store.list(`workspaces/${workspace.id}/events/`)).toHaveLength(
       3,
     );
+  });
+
+  it("imports Codex conversations one time and exposes them as searchable documents", async () => {
+    const { actor, repository, store } = await fixture();
+    const conversation: CodexConversation = {
+      createdAt: "2026-08-14T00:00:00.000Z",
+      id: "codex-session-1",
+      sourceFile: "rollout.jsonl",
+      title: "Codex 기록",
+      turns: [
+        {
+          content: "S3 기반으로 설계해줘",
+          createdAt: "2026-08-14T00:01:00.000Z",
+          id: "turn-1",
+          role: "user",
+        },
+        {
+          content: "불변 버전과 출처를 저장하겠습니다.",
+          createdAt: "2026-08-14T00:02:00.000Z",
+          id: "turn-2",
+          role: "assistant",
+        },
+      ],
+      updatedAt: "2026-08-14T00:02:00.000Z",
+    };
+    const first = await repository.importCodexConversation(actor, {
+      batchId: "codex-import-1",
+      conversation,
+      sequence: 0,
+      total: 1,
+    });
+    const second = await repository.importCodexConversation(actor, {
+      batchId: "codex-import-2",
+      conversation,
+      sequence: 0,
+      total: 1,
+    });
+
+    expect(first).toMatchObject({ imported: true, messageCount: 2 });
+    expect(second).toMatchObject({ imported: false, messageCount: 2 });
+    expect(await repository.listConversations(actor)).toMatchObject([
+      { source: { provider: "codex", sourceConversationId: conversation.id } },
+    ]);
+    expect(
+      await repository.listMessages(actor, first.conversationId),
+    ).toHaveLength(2);
+    expect(await repository.listDocuments(actor)).toMatchObject([
+      { filename: `codex/${conversation.id}.md`, status: "completed" },
+    ]);
+    expect(
+      await store.list(`workspaces/${actor.workspaceId}/state/imports/codex/`),
+    ).toHaveLength(1);
   });
 
   it("rejects messages after a conversation is archived", async () => {

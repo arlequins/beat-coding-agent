@@ -29,6 +29,8 @@ local application; the pages below explain design decisions and ongoing work.
   quotas, backups, and retrieval-incident recovery.
 - [Local agent demo](local-agent-demo.md): verify Ollama prerequisites and run
   the full no-cloud chat and RAG walkthrough.
+- [Codex history import](codex-history-import.md): import local Codex
+  conversations and review personal-memory candidates.
 - [SST local testing](sst-local-testing.md): what can be validated without SST
   sign-in or AWS credentials.
 - [Test operations](testing-operations.md): test layers, external test
@@ -50,6 +52,8 @@ local application; the pages below explain design decisions and ongoing work.
   protected environments, security checks, and response headers.
 - [Incident runbook](incident-runbook.md): triage, mitigation, recovery, and
   observability integration points.
+- [Codex production handoff](codex-production-handoff.md): inventory and
+  safety checks before moving personal Codex data to the production workspace.
 - [Semantic versioning](semantic-versioning.md): release impact and repository
   version policy.
 

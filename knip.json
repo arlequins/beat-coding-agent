@@ -15,6 +15,7 @@
     ".": {
       "entry": [
         "scripts/**/*.mjs",
+        "scripts/**/*.ts",
         "tests/load/**/*.js",
         "turbo/generators/config.ts"
       ]

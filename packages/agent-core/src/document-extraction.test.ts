@@ -13,4 +13,24 @@ describe("createTextDocumentExtraction", () => {
     });
     expect(result.text).toBe("Hello world");
   });
+
+  it("trims plain text and markdown documents", async () => {
+    const extractor = createTextDocumentExtraction();
+
+    await expect(
+      extractor.extract({
+        bytes: new TextEncoder().encode("  plain notes  "),
+        contentType: "text/plain",
+        filename: "notes.txt",
+      }),
+    ).resolves.toMatchObject({ text: "plain notes" });
+
+    await expect(
+      extractor.extract({
+        bytes: new TextEncoder().encode("  # Markdown  "),
+        contentType: "text/markdown",
+        filename: "notes.md",
+      }),
+    ).resolves.toMatchObject({ text: "# Markdown" });
+  });
 });

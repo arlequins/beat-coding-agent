@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FeedbackKind } from "@arlequins/agent-core";
 import {
+  buildCodexTranscript,
   buildKnowledgeDraft,
   buildTrainingExample,
+  type CodexConversation,
   type KnowledgeArtifact,
   type KnowledgeArtifactKind,
   type KnowledgeArtifactStatus,
@@ -32,6 +34,14 @@ type Conversation = {
   createdByUserId: string;
   id: string;
   summary?: string;
+  source?: {
+    batchId: string;
+    provider: "codex";
+    sequence: number;
+    sourceConversationId: string;
+    sourceFile: string;
+    total: number;
+  };
   title: string;
   updatedAt: string;
   workspaceId: string;
@@ -43,6 +53,20 @@ type Message = {
   id: string;
   model?: string;
   role: "assistant" | "system" | "user";
+  sourceMessageId?: string;
+};
+
+type CodexImportRecord = {
+  batchId: string;
+  completedAt: string;
+  conversationId: string;
+  documentId?: string;
+  messageCount: number;
+  sequence: number;
+  sourceConversationId: string;
+  sourceFile: string;
+  status: "completed";
+  total: number;
 };
 type MemoryRecord = {
   content: string;
@@ -354,6 +378,17 @@ export function createS3AgentPlatformRepository(
   const now = options.now ?? (() => new Date());
   const jobLeaseMs = options.jobLeaseMs ?? 5 * 60_000;
 
+  function stableUuid(value: string) {
+    const bytes = createHash("sha256").update(value).digest().subarray(0, 16);
+    bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
+    bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+    const hex = bytes.toString("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(
+      12,
+      16,
+    )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
   async function appendEvent(
     actor: WorkspaceActor,
     action: string,
@@ -579,6 +614,127 @@ export function createS3AgentPlatformRepository(
       );
       await appendEvent(actor, "conversation.created", id);
       return publicConversation(conversation);
+    },
+    async importCodexConversation(
+      actor: WorkspaceActor,
+      input: {
+        batchId: string;
+        conversation: CodexConversation;
+        sequence: number;
+        total: number;
+      },
+    ) {
+      await assertOwner(actor);
+      const { conversation: source } = input;
+      const importId = createHash("sha256")
+        .update(`codex:${source.id}`)
+        .digest("hex");
+      const importKey = stateKey(actor.workspaceId, `imports/codex`, importId);
+      const previous = await store.get<CodexImportRecord>(importKey);
+      if (previous)
+        return {
+          ...previous.value,
+          imported: false,
+          createdAt: new Date(previous.value.completedAt),
+        };
+
+      const conversationId = stableUuid(`codex:conversation:${source.id}`);
+      const conversation: Conversation = {
+        createdAt: source.createdAt,
+        createdByUserId: actor.userId,
+        id: conversationId,
+        source: {
+          batchId: input.batchId,
+          provider: "codex",
+          sequence: input.sequence,
+          sourceConversationId: source.id,
+          sourceFile: source.sourceFile,
+          total: input.total,
+        },
+        title: source.title,
+        updatedAt: source.updatedAt,
+        workspaceId: actor.workspaceId,
+      };
+      const conversationKey = stateKey(
+        actor.workspaceId,
+        "conversations",
+        conversationId,
+      );
+      if (!(await store.get(conversationKey))) {
+        await store.create(conversationKey, conversation);
+        await appendEvent(actor, "conversation.imported", conversationId, {
+          provider: "codex",
+          sequence: input.sequence,
+          sourceConversationId: source.id,
+          total: input.total,
+        });
+      }
+
+      for (const turn of source.turns) {
+        const messageId = stableUuid(`codex:message:${source.id}:${turn.id}`);
+        const message: Message = {
+          content: turn.content,
+          conversationId,
+          createdAt: turn.createdAt,
+          id: messageId,
+          role: turn.role,
+          sourceMessageId: turn.id,
+        };
+        const messageKey = stateKey(
+          actor.workspaceId,
+          `messages/${conversationId}`,
+          messageId,
+        );
+        if (await store.get(messageKey)) continue;
+        await store.create(messageKey, message);
+        await appendEvent(actor, "message.imported", messageId, {
+          conversationId,
+          provider: "codex",
+          sourceMessageId: turn.id,
+        });
+      }
+
+      let documentId: string | undefined;
+      try {
+        const document = await this.ingestTextDocument(actor, {
+          content: buildCodexTranscript(source),
+          filename: `codex/${source.id}.md`,
+        });
+        documentId = document.id;
+      } catch (error) {
+        if (
+          !(error instanceof Error && error.message.includes("already exists"))
+        )
+          throw error;
+      }
+
+      const completedAt = timestamp();
+      const record: CodexImportRecord = {
+        batchId: input.batchId,
+        completedAt,
+        conversationId,
+        ...(documentId ? { documentId } : {}),
+        messageCount: source.turns.length,
+        sequence: input.sequence,
+        sourceConversationId: source.id,
+        sourceFile: source.sourceFile,
+        status: "completed",
+        total: input.total,
+      };
+      await store.create(importKey, record);
+      await appendEvent(actor, "codex.import.completed", conversationId, {
+        batchId: input.batchId,
+        documentId,
+        messageCount: record.messageCount,
+        sequence: input.sequence,
+        sourceConversationId: source.id,
+        total: input.total,
+      });
+      return {
+        ...record,
+        createdAt: new Date(completedAt),
+        imported: true,
+      };
     },
     async listConversations(actor: WorkspaceActor) {
       await assertMember(actor);
