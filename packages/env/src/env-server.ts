@@ -69,6 +69,10 @@ export const serverEnv = createEnv({
     OIDC_PROVIDERS_JSON: z.string().optional(),
     /** Comma-separated OIDC `issuer|subject` identities promoted to administrator. */
     AUTH_BOOTSTRAP_ADMIN_IDENTITIES: z.string().optional(),
+    /** Comma-separated verified email bootstrap allowlist for the single coding-agent owner. */
+    CODING_AGENT_OWNER_EMAILS: z.string().optional(),
+    /** Comma-separated issuer|subject allowlist; preferred after first login. */
+    CODING_AGENT_OWNER_IDENTITIES: z.string().optional(),
     /** Comma-separated browser origins accepted by the Hono API. */
     API_CORS_ORIGINS: z.string().optional(),
     /** Local Hono server port. */
@@ -132,6 +136,12 @@ export const serverEnv = createEnv({
       .enum(["true", "false"])
       .transform((value) => value === "true")
       .optional(),
+    /** Optional S3 Vectors bucket and index for managed semantic retrieval. */
+    S3_VECTOR_BUCKET: z.string().min(3).optional(),
+    S3_VECTOR_INDEX: z.string().min(3).optional(),
+    /** Optional short-lived GitHub App installation token with contents:read only. */
+    GITHUB_READONLY_APP_TOKEN: z.string().min(1).optional(),
+    GITHUB_API_URL: z.url().optional(),
     /** Optional paid production model. Omit to keep Bedrock disabled. */
     BEDROCK_MODEL_ID: z.string().min(1).optional(),
     /** Exact model or inference-profile ARN granted to the Lambda runtime. */
@@ -174,6 +184,8 @@ export const serverEnv = createEnv({
     OIDC_PROVIDERS_JSON: process.env.OIDC_PROVIDERS_JSON,
     AUTH_BOOTSTRAP_ADMIN_IDENTITIES:
       process.env.AUTH_BOOTSTRAP_ADMIN_IDENTITIES,
+    CODING_AGENT_OWNER_EMAILS: process.env.CODING_AGENT_OWNER_EMAILS,
+    CODING_AGENT_OWNER_IDENTITIES: process.env.CODING_AGENT_OWNER_IDENTITIES,
     API_CORS_ORIGINS: process.env.API_CORS_ORIGINS,
     API_PORT: process.env.API_PORT,
     API_DEPLOYMENT_PRESET: process.env.API_DEPLOYMENT_PRESET,
@@ -200,6 +212,10 @@ export const serverEnv = createEnv({
     S3_AGENT_PREFIX: process.env.S3_AGENT_PREFIX,
     S3_AGENT_ENDPOINT: process.env.S3_AGENT_ENDPOINT,
     S3_AGENT_FORCE_PATH_STYLE: process.env.S3_AGENT_FORCE_PATH_STYLE,
+    S3_VECTOR_BUCKET: process.env.S3_VECTOR_BUCKET,
+    S3_VECTOR_INDEX: process.env.S3_VECTOR_INDEX,
+    GITHUB_READONLY_APP_TOKEN: process.env.GITHUB_READONLY_APP_TOKEN,
+    GITHUB_API_URL: process.env.GITHUB_API_URL,
     BEDROCK_MODEL_ID: process.env.BEDROCK_MODEL_ID,
     BEDROCK_MODEL_ARN: process.env.BEDROCK_MODEL_ARN,
     OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,

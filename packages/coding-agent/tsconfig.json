@@ -1,7 +1,9 @@
 {
-  "extends": "@arlequins/tsconfig/base.json",
+  "extends": "@arlequins/tsconfig/compiled-package.json",
   "compilerOptions": {
-    "outDir": "dist"
+    "lib": ["ES2022", "DOM"],
+    "outDir": "dist",
+    "types": ["node"]
   },
   "include": ["src"]
 }

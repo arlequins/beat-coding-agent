@@ -123,6 +123,12 @@ export const protectedProcedure = t.procedure
     if (!ctx.session?.user) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
+    if (!ctx.codingAgentOwner) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This personal coding agent is restricted to its owner",
+      });
+    }
     return next({
       ctx: {
         // infers the `session` as non-nullable

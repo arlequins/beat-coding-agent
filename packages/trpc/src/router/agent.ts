@@ -1,4 +1,5 @@
 import {
+  addGitHubSourceInputSchema,
   addMessageInputSchema,
   addWorkspaceMemberInputSchema,
   completeAgentInputSchema,
@@ -6,13 +7,22 @@ import {
   createConversationInputSchema,
   createDocumentInputSchema,
   createEvaluationCaseInputSchema,
+  createFineTuneJobInputSchema,
+  createKnowledgeDraftInputSchema,
   createMemoryInputSchema,
   createWorkspaceInputSchema,
   documentScopeInputSchema,
+  githubFileInputSchema,
+  githubRepositoryInputSchema,
   ingestTextDocumentInputSchema,
+  jobScopeInputSchema,
+  knowledgeArtifactScopeInputSchema,
   memoryScopeInputSchema,
   messageCitationInputSchema,
   publishReleaseInputSchema,
+  queueConsolidationInputSchema,
+  recordGitHubEvidenceInputSchema,
+  reviewKnowledgeArtifactInputSchema,
   reviewMemoryInputSchema,
   startIndexInputSchema,
   submitFeedbackInputSchema,
@@ -33,6 +43,9 @@ function actor(userId: string, workspaceId: string) {
 export const agentRouter = {
   workspaces: protectedProcedure.query(({ ctx }) =>
     ctx.services.agent.listWorkspaces(ctx.session.user.id),
+  ),
+  activeJob: protectedProcedure.query(({ ctx }) =>
+    ctx.services.agent.activeJob(ctx.session.user.id),
   ),
   createWorkspace: protectedProcedure
     .input(createWorkspaceInputSchema)
@@ -357,4 +370,155 @@ export const agentRouter = {
         actor(ctx.session.user.id, input.workspaceId),
       ),
     ),
+  knowledgeArtifacts: protectedProcedure
+    .input(workspaceScopeInputSchema)
+    .query(({ ctx, input }) =>
+      ctx.services.agent.listKnowledgeArtifacts(
+        actor(ctx.session.user.id, input.workspaceId),
+      ),
+    ),
+  knowledgeVersions: protectedProcedure
+    .input(knowledgeArtifactScopeInputSchema)
+    .query(({ ctx, input }) =>
+      ctx.services.agent.listKnowledgeVersions(
+        actor(ctx.session.user.id, input.workspaceId),
+        input.artifactId,
+      ),
+    ),
+  createKnowledgeDraft: protectedProcedure
+    .input(createKnowledgeDraftInputSchema)
+    .mutation(({ ctx, input }) => {
+      const { workspaceId, ...draft } = input;
+      return ctx.services.agent.createKnowledgeDraft(
+        actor(ctx.session.user.id, workspaceId),
+        draft,
+      );
+    }),
+  reviewKnowledgeArtifact: protectedProcedure
+    .input(reviewKnowledgeArtifactInputSchema)
+    .mutation(({ ctx, input }) => {
+      const { workspaceId, ...review } = input;
+      return ctx.services.agent.reviewKnowledgeArtifact(
+        actor(ctx.session.user.id, workspaceId),
+        review,
+      );
+    }),
+  queueConsolidation: protectedProcedure
+    .input(queueConsolidationInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const actorInput = actor(ctx.session.user.id, input.workspaceId);
+      const job = await ctx.services.agent.queueKnowledgeConsolidation(
+        actorInput,
+        {
+          conversationId: input.conversationId,
+          estimatedDurationMs: input.estimatedDurationMs,
+        },
+      );
+      // Local mode processes immediately; a protected worker can call the same operation from SQS later.
+      void ctx.services.agent.runKnowledgeConsolidation(actorInput, job.id);
+      return job;
+    }),
+  processConsolidation: protectedProcedure
+    .input(jobScopeInputSchema)
+    .mutation(({ ctx, input }) =>
+      ctx.services.agent.runKnowledgeConsolidation(
+        actor(ctx.session.user.id, input.workspaceId),
+        input.jobId,
+      ),
+    ),
+  jobs: protectedProcedure
+    .input(workspaceScopeInputSchema)
+    .query(({ ctx, input }) =>
+      ctx.services.agent.listJobs(
+        actor(ctx.session.user.id, input.workspaceId),
+      ),
+    ),
+  createTrainingDataset: protectedProcedure
+    .input(workspaceScopeInputSchema)
+    .mutation(({ ctx, input }) =>
+      ctx.services.agent.createTrainingDataset(
+        actor(ctx.session.user.id, input.workspaceId),
+      ),
+    ),
+  trainingDatasets: protectedProcedure
+    .input(workspaceScopeInputSchema)
+    .query(({ ctx, input }) =>
+      ctx.services.agent.listTrainingDatasets(
+        actor(ctx.session.user.id, input.workspaceId),
+      ),
+    ),
+  queueFineTune: protectedProcedure
+    .input(createFineTuneJobInputSchema)
+    .mutation(({ ctx, input }) => {
+      const { workspaceId, ...job } = input;
+      return ctx.services.agent.queueFineTune(
+        actor(ctx.session.user.id, workspaceId),
+        job,
+      );
+    }),
+  githubSources: protectedProcedure
+    .input(workspaceScopeInputSchema)
+    .query(({ ctx, input }) =>
+      ctx.services.agent.listGitHubSources(
+        actor(ctx.session.user.id, input.workspaceId),
+      ),
+    ),
+  githubRepository: protectedProcedure
+    .input(githubRepositoryInputSchema)
+    .query(async ({ ctx, input }) => {
+      if (!ctx.services.github)
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "GitHub read-only integration is not configured",
+        });
+      const [owner, repo] = input.fullName.split("/");
+      if (!owner || !repo) throw new TRPCError({ code: "BAD_REQUEST" });
+      return ctx.services.github.getRepository({ owner, repo });
+    }),
+  githubFile: protectedProcedure
+    .input(githubFileInputSchema)
+    .query(async ({ ctx, input }) => {
+      if (!ctx.services.github)
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "GitHub read-only integration is not configured",
+        });
+      const [owner, repo] = input.fullName.split("/");
+      if (!owner || !repo) throw new TRPCError({ code: "BAD_REQUEST" });
+      const evidence = await ctx.services.github.getFile({
+        owner,
+        path: input.path,
+        repo,
+        ref: input.ref,
+      });
+      await ctx.services.agent.recordGitHubEvidence(
+        actor(ctx.session.user.id, input.workspaceId),
+        {
+          content: evidence.content,
+          path: evidence.path,
+          repository: input.fullName,
+          sha: evidence.sha,
+          url: evidence.url,
+        },
+      );
+      return evidence;
+    }),
+  addGitHubSource: protectedProcedure
+    .input(addGitHubSourceInputSchema)
+    .mutation(({ ctx, input }) => {
+      const { workspaceId, ...source } = input;
+      return ctx.services.agent.addGitHubSource(
+        actor(ctx.session.user.id, workspaceId),
+        source,
+      );
+    }),
+  recordGitHubEvidence: protectedProcedure
+    .input(recordGitHubEvidenceInputSchema)
+    .mutation(({ ctx, input }) => {
+      const { workspaceId, ...evidence } = input;
+      return ctx.services.agent.recordGitHubEvidence(
+        actor(ctx.session.user.id, workspaceId),
+        evidence,
+      );
+    }),
 } satisfies TRPCRouterRecord;

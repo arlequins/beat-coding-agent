@@ -26,6 +26,10 @@ export default function HomePage() {
         <AgentChat />
       </section>
       <p className="text-muted-foreground text-xs">
+        모바일에서는 Safari 공유 메뉴의 “홈 화면에 추가”로 설치할 수 있습니다.
+        대화 전문은 오프라인 캐시에 저장하지 않습니다.
+      </p>
+      <p className="text-muted-foreground text-xs">
         API: {env.NEXT_PUBLIC_API_URL} · 초기 버전은 읽기 전용이며 파일
         수정·커밋·배포는 수행하지 않습니다.
       </p>

@@ -9,6 +9,24 @@ async function signIn(page: import("@playwright/test").Page, login: string) {
   await expect(page).toHaveURL("http://localhost:3100/");
 }
 
+test("publishes an installable PWA manifest without caching private content", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const manifest = await page.evaluate(async () =>
+    (await fetch("/manifest.webmanifest")).json(),
+  );
+  expect(manifest).toMatchObject({
+    display: "standalone",
+    scope: "/",
+    start_url: "/",
+  });
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+    "href",
+    "/manifest.webmanifest",
+  );
+});
+
 test("creates an agent workspace and starts a conversation without horizontal overflow", async ({
   page,
 }, testInfo) => {
