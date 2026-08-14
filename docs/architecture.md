@@ -77,13 +77,13 @@ pnpm dev:local
 This starts MinIO and runs the local OIDC provider, API, and web app. The
 defaults are:
 
-- Web: `http://localhost:3000`
-- API: `http://localhost:5000`
-- Liveness: `http://localhost:5000/health/live`
-- Readiness: `http://localhost:5000/health/ready`
-- API explorer: `http://localhost:5000/docs`
-- OpenAPI contract: `http://localhost:5000/openapi.json`
-- tRPC: `http://localhost:5000/api/trpc`
+- Web: `http://localhost:43100`
+- API: `http://localhost:43101`
+- Liveness: `http://localhost:43101/health/live`
+- Readiness: `http://localhost:43101/health/ready`
+- API explorer: `http://localhost:43101/docs`
+- OpenAPI contract: `http://localhost:43101/openapi.json`
+- tRPC: `http://localhost:43101/api/trpc`
 - MinIO console: `http://localhost:59001`
 
 `API_PORT` changes the local API port. `API_CORS_ORIGINS` accepts a

@@ -15,7 +15,7 @@ pnpm dev:local
 If readiness reports Ollama unavailable, start `ollama serve` and run the check
 again. The check downloads nothing and changes no data.
 
-Open `http://localhost:3000`, sign in with any non-empty development
+Open `http://localhost:43100`, sign in with any non-empty development
 credentials, create a workspace and conversation, upload a small text or
 Markdown document, and ask a question answered by that document. Verify that the
 assistant response includes a citation. Keyword retrieval remains available if
@@ -24,7 +24,7 @@ the embedding model is temporarily offline.
 Before stopping, run:
 
 ```bash
-pnpm agent:readiness --api-url http://localhost:5000
+pnpm agent:readiness --api-url http://localhost:43101
 pnpm storage:stop
 ```
 

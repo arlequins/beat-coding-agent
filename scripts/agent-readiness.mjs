@@ -12,7 +12,7 @@ function parseArgs(args) {
     } else throw new Error(`Unknown argument: ${argument}`);
   }
   if (!options.baseUrl)
-    throw new Error("Set API_URL or pass --api-url http://localhost:5000");
+    throw new Error("Set API_URL or pass --api-url http://localhost:43101");
   return { ...options, baseUrl: options.baseUrl.replace(/\/$/, "") };
 }
 
