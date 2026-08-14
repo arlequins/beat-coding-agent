@@ -2,6 +2,11 @@ name: Publish tagged release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Semantic version tag to verify and publish"
+        required: true
+        type: string
   push:
     tags: ["v*"]
 
@@ -16,26 +21,29 @@ jobs:
   verify-and-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - uses: ./tooling/github/setup
       - name: Copy environment template
         run: cp .env.example .env
       - name: Verify semantic version tag
         shell: bash
         run: |
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
       - name: Verify release candidate
         run: pnpm check && pnpm typecheck && pnpm test && pnpm build && pnpm test:sst
       - name: Create GitHub Release when needed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "GitHub Release already exists for $GITHUB_REF_NAME"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release already exists for $RELEASE_TAG"
           else
-            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes
           fi
