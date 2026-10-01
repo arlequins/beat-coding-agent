@@ -2,6 +2,13 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.4](https://github.com/arlequins/beat-coding-agent/compare/v0.2.3...v0.2.4) (2026-10-01)
+
+
+### Bug Fixes
+
+* skip sandbox smoke when endpoints are unconfigured ([#12](https://github.com/arlequins/beat-coding-agent/issues/12)) ([f53c51d](https://github.com/arlequins/beat-coding-agent/commit/f53c51d895f07daeb88538f892e9e830308f4e6b))
+
 ## [0.2.3](https://github.com/arlequins/beat-coding-agent/compare/v0.2.2...v0.2.3) (2026-08-14)
 
 
