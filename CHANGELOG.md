@@ -2,6 +2,13 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.5](https://github.com/arlequins/beat-coding-agent/compare/v0.2.4...v0.2.5) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** resolve remaining Dependabot vulnerabilities ([#20](https://github.com/arlequins/beat-coding-agent/issues/20)) ([1ea68b0](https://github.com/arlequins/beat-coding-agent/commit/1ea68b02c26a4b3d65cc5b47129a3a6a28eb54ab))
+
 ## [0.2.4](https://github.com/arlequins/beat-coding-agent/compare/v0.2.3...v0.2.4) (2026-10-31)
 
 
