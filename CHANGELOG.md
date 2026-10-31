@@ -2,6 +2,15 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.4](https://github.com/arlequins/beat-coding-agent/compare/v0.2.3...v0.2.4) (2026-10-31)
+
+
+### Bug Fixes
+
+* resolve dependency security findings and pending update conflicts ([1ba50a6](https://github.com/arlequins/beat-coding-agent/commit/1ba50a66509cb1a395e5495a7174431a37d2ad25))
+* resolve dependency update conflicts and security checks ([74fee12](https://github.com/arlequins/beat-coding-agent/commit/74fee12b091590fed2d374e96d92bb90d0fab435))
+* skip sandbox smoke when endpoints are unconfigured ([#12](https://github.com/arlequins/beat-coding-agent/issues/12)) ([f53c51d](https://github.com/arlequins/beat-coding-agent/commit/f53c51d895f07daeb88538f892e9e830308f4e6b))
+
 ## [0.2.3](https://github.com/arlequins/beat-coding-agent/compare/v0.2.2...v0.2.3) (2026-08-14)
 
 
